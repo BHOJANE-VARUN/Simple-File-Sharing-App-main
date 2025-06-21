@@ -1,205 +1,235 @@
-# File_Sharing
+# File Sharing: Connection Establishment Flow
 
-## How connection is established 
+This document describes the step-by-step flow of how a connection is established and files are shared between a sender and receiver in the application.
 
-1. When a user choice to create a room 
-    i. A random 9 digit number is generated
-    ii. "sender-join" message is emitted to server with uid:joinID 
-    There joinID is room 9-digit identifier
-   
-`socket.emit("sender-join", {
-			uid:joinID
+---
+
+## 1. Sender Creates a Room
+
+- A random 9-digit number is generated as the `joinID`.
+- The sender emits a `sender-join` message to the server with the generated `joinID`:
+
+```js
+socket.emit("sender-join", {
+    uid: joinID
 });
-`js
-3. When server receives a "sender-join" request
-    i. creates a room with uid(joinID)
-    ii. Joins the sender into that room 
-`
+```
+
+---
+
+## 2. Server Handles Sender Join
+
+- Upon receiving `sender-join`, the server:
+  - Creates a room with `uid` (`joinID`)
+  - The sender joins that room
+
+```js
 socket.on("sender-join", (data) => {
     socket.join(data.uid);
-  });
+});
+```
 
-`js
+---
 
-3. Now receiver has to enter the 9-digit number
-    i. "receiver-join" message is emitted with sender_id(9-digit number entered manually) and uid(it's own identifier)
+## 3. Receiver Enters the Room
 
-`
+- The receiver enters the 9-digit room number and emits `receiver-join`
+- The message includes:
+  - `sender_uid`: the 9-digit room number entered
+  - `uid`: the receiver's own identifier
 
+```js
 socket.emit("receiver-join", {
-		sender_uid:sender_uid,
-		uid:joinID
-	});
-        
-`js
+    sender_uid: sender_uid,
+    uid: joinID
+});
+```
 
-4. Now server will join receiver in room id=== uid of receiver
-    i. sender and receiver both are in separate rooms
-    ii. after that server sends "init" message to sender with receiver's uid.
+---
 
-`
+## 4. Server Handles Receiver Join
 
+- Server joins the receiver to a room with id === receiver's `uid`
+- Both sender and receiver are now in their own rooms
+- Server notifies the sender with an `init` message containing the receiver's `uid`
+
+```js
 socket.on("receiver-join", (data) => {
     socket.join(data.uid);
     console.log("Receiver joined:", data.uid, " -> sender:", data.sender_uid);
     socket.to(data.sender_uid).emit("init", data.uid);
-  });
+});
+```
 
-`js
+---
 
-5. Sender stores receiver's uid locally
+## 5. Sender Stores Receiver's UID
 
-`
+- Sender receives the `init` event and stores the receiver's `uid` locally
+- UI transitions from join screen to file sharing screen
 
-socket.on("init",function(uid){
-		receiverID = uid;
-		document.querySelector(".join-screen").classList.remove("active");
-		document.querySelector(".fs-screen").classList.add("active");
-	});
+```js
+socket.on("init", function(uid) {
+    receiverID = uid;
+    document.querySelector(".join-screen").classList.remove("active");
+    document.querySelector(".fs-screen").classList.add("active");
+});
+```
 
-`js
+---
 
-6. Now sender has to select a file that has to be sended 
-    i. selects file
-    ii. Reads it as buffer 
-    iii. calls functions for further process with metadata, buffer with file
+## 6. Sender Selects a File
 
-`js
+- Sender selects a file for sharing
+- The file is read as a buffer and the process begins
 
-document.querySelector("#file-input").addEventListener("change",function(e){
-		let file = e.target.files[0];
-		if(!file){
-			return;		
-		}
-		let reader = new FileReader();
-		reader.onload = function(e){
-			let buffer = new Uint8Array(reader.result);
+```js
+document.querySelector("#file-input").addEventListener("change", function(e) {
+    let file = e.target.files[0];
+    if (!file) return;
+    let reader = new FileReader();
+    reader.onload = function(e) {
+        let buffer = new Uint8Array(reader.result);
 
-			let el = document.createElement("div");
-			el.classList.add("item");
-			el.innerHTML = `
-					<div class="progress">0%</div>
-					<div class="filename">${file.name}</div>
-			`;
-			document.querySelector(".files-list").appendChild(el);
-			shareFile({
-				filename: file.name,
-				total_buffer_size:buffer.length,
-				buffer_size:1024,
-			}, buffer, el.querySelector(".progress"));
-		}
-		reader.readAsArrayBuffer(file);
-	});
+        let el = document.createElement("div");
+        el.classList.add("item");
+        el.innerHTML = `
+            <div class="progress">0%</div>
+            <div class="filename">${file.name}</div>
+        `;
+        document.querySelector(".files-list").appendChild(el);
+        shareFile({
+            filename: file.name,
+            total_buffer_size: buffer.length,
+            buffer_size: 1024,
+        }, buffer, el.querySelector(".progress"));
+    }
+    reader.readAsArrayBuffer(file);
+});
+```
 
-`js
+---
 
-7. shareFile function
-    i. it first emits the file meta to receiver
-    ii. then it attaches a "fs-share" command on socket that transfers file in chunks and updates html elements
+## 7. `shareFile` Function
 
-`
+- Emits the file metadata to the receiver
+- Sets up the socket to handle file chunk transfers and UI updates
 
-	document.querySelector("#file-input").addEventListener("change",function(e){
-		let file = e.target.files[0];
-		if(!file){
-			return;		
-		}
-		let reader = new FileReader();
-		reader.onload = function(e){
-			let buffer = new Uint8Array(reader.result);
+---
 
-			let el = document.createElement("div");
-			el.classList.add("item");
-			el.innerHTML = `
-					<div class="progress">0%</div>
-					<div class="filename">${file.name}</div>
-			`;
-			document.querySelector(".files-list").appendChild(el);
-			shareFile({
-				filename: file.name,
-				total_buffer_size:buffer.length,
-				buffer_size:1024,
-			}, buffer, el.querySelector(".progress"));
-		}
-		reader.readAsArrayBuffer(file);
-	});
+## 8. Server Relays File Metadata
 
-`js
+- Upon receiving `file-meta`, server relays it to the receiver as `fs-meta`
 
-8. When server receives "file-meta" message it simply transfer it to receiver
-
-`
-
-  socket.on("file-meta", (data) => {
+```js
+socket.on("file-meta", (data) => {
     socket.to(data.uid).emit("fs-meta", data.metadata);
-  });
+});
+```
 
-`js
+---
 
-9. When receives "file-meta" 
-    i. it initized fileshare object with metadata
-    ii. emits "fs-start" message
+## 9. Receiver Handles File Metadata
 
-`
+- Receiver initializes a file share object with the metadata
+- Emits `fs-start` to signal readiness
 
-	socket.on("fs-meta",function(metadata){
-		fileShare.metadata = metadata;
-		fileShare.transmitted = 0;
-		fileShare.buffer = [];
+```js
+socket.on("fs-meta", function(metadata) {
+    fileShare.metadata = metadata;
+    fileShare.transmitted = 0;
+    fileShare.buffer = [];
 
-        // update dom
+    // update DOM, show progress, etc.
 
-		socket.emit("fs-start",{
-			uid:sender_uid
-		});
-	});
+    socket.emit("fs-start", {
+        uid: sender_uid
+    });
+});
+```
 
-`js
+---
 
-10. On server simply converts that "fs-start" to "fs-share" message to sender
+## 10. Server Relays `fs-start`
 
-`
+- Server receives `fs-start` and relays a `fs-share` message to the sender
 
-socket.on("fs-start",function(data){
-		socket.in(data.uid).emit("fs-share", {});
-	});
+```js
+socket.on("fs-start", function(data) {
+    socket.in(data.uid).emit("fs-share", {});
+});
+```
 
-`js
+---
 
-11. When sender receives a "fs-share" message
-    i. it slices a chunk from buffer and update the buffer
-    ii. if chunk is not empty then emits a "file-raw" message with data and receiver id
-    iii. else declares that file has been send
+## 11. Sender Handles `fs-share`
 
-`js
+- Upon receiving `fs-share`, sender:
+  - Slices a chunk from the buffer
+  - Updates progress
+  - Emits `file-raw` with the data chunk and receiver's id
+  - If buffer is empty, declares the file as sent
 
-socket.on("fs-share",function(){
-			let chunk = buffer.slice(0,metadata.buffer_size);
-			buffer = buffer.slice(metadata.buffer_size,buffer.length);
-			progress_node.innerText = Math.trunc(((metadata.total_buffer_size - buffer.length) / metadata.total_buffer_size * 100));
-			if(chunk.length != 0){
-				socket.emit("file-raw", {
-					uid:receiverID,
-					buffer:chunk
-				});
-			} else {
-				console.log("Sent file successfully");
-			}
-		});
+```js
+socket.on("fs-share", function() {
+    let chunk = buffer.slice(0, metadata.buffer_size);
+    buffer = buffer.slice(metadata.buffer_size, buffer.length);
+    progress_node.innerText = Math.trunc(((metadata.total_buffer_size - buffer.length) / metadata.total_buffer_size * 100));
+    if (chunk.length != 0) {
+        socket.emit("file-raw", {
+            uid: receiverID,
+            buffer: chunk
+        });
+    } else {
+        console.log("Sent file successfully");
+    }
+});
+```
 
-`js
+---
 
-12. server converts that "file-raw" message to "file-share" and sends to receiver
+## 12. Server Relays File Chunks
 
-`
+- On receiving `file-raw`, server emits `fs-share` to the receiver
 
-	socket.on("file-raw",function(data){
-		socket.in(data.uid).emit("fs-share", data.buffer);
-	})
+```js
+socket.on("file-raw", function(data) {
+    socket.in(data.uid).emit("fs-share", data.buffer);
+});
+```
 
-`js
+---
 
-13. When receiver gets "fs-share" message then
-    i. it pushes chunk into buffer and update the received file size
-    ii. if received file != total size then emits "fs-start"
-    iii. eles stops 
+## 13. Receiver Handles File Chunks
+
+- Receiver:
+  - Pushes each received chunk into a buffer and updates received file size
+  - If the received file size is less than the total, emits `fs-start` again
+  - Else, concludes the file transfer
+
+---
+
+## Summary Flowchart
+
+```
+Sender                Server                  Receiver
+  |   sender-join   ->|                        |
+  |<-(room created)-- |                        |
+  |                   |                        |
+  |                   |<-- receiver-join ------|
+  |                   |--- init -------------->|
+  |<----- init -------|                        |
+  |                   |                        |
+  |--- file-meta ---->|                        |
+  |                   |--- fs-meta ----------->|
+  |                   |                        |
+  |<------------------|--- fs-start -----------|
+  |--- file-raw ----->|                        |
+  |                   |--- fs-share ---------->|
+  |                   |                        |
+  |<------------------|--- fs-start (repeat) --|
+```
+
+---
+
+This flow ensures that both sender and receiver are synchronized for efficient and reliable file transfer using socket.io rooms and events.
