@@ -6,13 +6,12 @@
     i. A random 9 digit number is generated
     ii. "sender-join" message is emitted to server with uid:joinID 
     There joinID is room 9-digit identifier
-` 
-socket.emit("sender-join", {
+   
+`socket.emit("sender-join", {
 			uid:joinID
 });
-
 `js
-2. When server receives a "sender-join" request
+3. When server receives a "sender-join" request
     i. creates a room with uid(joinID)
     ii. Joins the sender into that room 
 `
