@@ -6,39 +6,39 @@
     i. A random 9 digit number is generated
     ii. "sender-join" message is emitted to server with uid:joinID 
     There joinID is room 9-digit identifier
---- 
+` 
 socket.emit("sender-join", {
 			uid:joinID
 });
 
----
+`js
 2. When server receives a "sender-join" request
     i. creates a room with uid(joinID)
     ii. Joins the sender into that room 
----
+`
 socket.on("sender-join", (data) => {
     socket.join(data.uid);
   });
 
----
+`js
 
 3. Now receiver has to enter the 9-digit number
     i. "receiver-join" message is emitted with sender_id(9-digit number entered manually) and uid(it's own identifier)
 
----
+`
 
 socket.emit("receiver-join", {
 		sender_uid:sender_uid,
 		uid:joinID
 	});
         
----
+`js
 
 4. Now server will join receiver in room id=== uid of receiver
     i. sender and receiver both are in separate rooms
     ii. after that server sends "init" message to sender with receiver's uid.
 
----
+`
 
 socket.on("receiver-join", (data) => {
     socket.join(data.uid);
@@ -46,11 +46,11 @@ socket.on("receiver-join", (data) => {
     socket.to(data.sender_uid).emit("init", data.uid);
   });
 
----
+`js
 
 5. Sender stores receiver's uid locally
 
----
+`
 
 socket.on("init",function(uid){
 		receiverID = uid;
@@ -58,14 +58,14 @@ socket.on("init",function(uid){
 		document.querySelector(".fs-screen").classList.add("active");
 	});
 
----
+`js
 
 6. Now sender has to select a file that has to be sended 
     i. selects file
     ii. Reads it as buffer 
     iii. calls functions for further process with metadata, buffer with file
 
----
+`js
 
 document.querySelector("#file-input").addEventListener("change",function(e){
 		let file = e.target.files[0];
@@ -92,13 +92,13 @@ document.querySelector("#file-input").addEventListener("change",function(e){
 		reader.readAsArrayBuffer(file);
 	});
 
----
+`js
 
 7. shareFile function
     i. it first emits the file meta to receiver
     ii. then it attaches a "fs-share" command on socket that transfers file in chunks and updates html elements
 
----
+`
 
 	document.querySelector("#file-input").addEventListener("change",function(e){
 		let file = e.target.files[0];
@@ -125,23 +125,23 @@ document.querySelector("#file-input").addEventListener("change",function(e){
 		reader.readAsArrayBuffer(file);
 	});
 
----
+`js
 
 8. When server receives "file-meta" message it simply transfer it to receiver
 
----
+`
 
   socket.on("file-meta", (data) => {
     socket.to(data.uid).emit("fs-meta", data.metadata);
   });
 
----
+`js
 
 9. When receives "file-meta" 
     i. it initized fileshare object with metadata
     ii. emits "fs-start" message
 
----
+`
 
 	socket.on("fs-meta",function(metadata){
 		fileShare.metadata = metadata;
@@ -155,24 +155,24 @@ document.querySelector("#file-input").addEventListener("change",function(e){
 		});
 	});
 
----
+`js
 
 10. On server simply converts that "fs-start" to "fs-share" message to sender
 
----
+`
 
 socket.on("fs-start",function(data){
 		socket.in(data.uid).emit("fs-share", {});
 	});
 
----
+`js
 
 11. When sender receives a "fs-share" message
     i. it slices a chunk from buffer and update the buffer
     ii. if chunk is not empty then emits a "file-raw" message with data and receiver id
     iii. else declares that file has been send
 
----
+`js
 
 socket.on("fs-share",function(){
 			let chunk = buffer.slice(0,metadata.buffer_size);
@@ -188,17 +188,17 @@ socket.on("fs-share",function(){
 			}
 		});
 
----
+`js
 
 12. server converts that "file-raw" message to "file-share" and sends to receiver
 
----
+`
 
 	socket.on("file-raw",function(data){
 		socket.in(data.uid).emit("fs-share", data.buffer);
 	})
 
----
+`js
 
 13. When receiver gets "fs-share" message then
     i. it pushes chunk into buffer and update the received file size
