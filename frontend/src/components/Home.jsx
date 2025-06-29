@@ -49,16 +49,36 @@
 // import { Share2, Users, Upload, Download } from "lucide-react";
 // import { useToast } from "@/hooks/use-toast";
 import { LuUsers } from "react-icons/lu";
-import React from "react";
+import React, { useEffect } from "react";
 import { useState } from "react";
 import Logo from "./Logo";
 import { FiUpload } from "react-icons/fi";
 import { COMPANY_NAME } from "../util/Constants";
 import CreateRoom from "./CreateRoom";
 import JoinRoom from "./JoinRoom";
-  // const { toast } = useToast();
+import { auth } from "../util/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { useNavigate } from "react-router-dom";
+
 const Home = () => {
   const [activeTab, setActiveTab] = useState("home");
+  const [userDetails, setUserDetails] = useState(null);
+  const navigate = useNavigate();
+useEffect(() => {
+  const unsubscribe = onAuthStateChanged(auth, (user) => {
+    if (user) {
+      setUserDetails({
+        name: user.displayName || "Anonymous",
+        email: user.email,
+      });
+    }
+    else{
+      navigate("/");
+    }
+  });
+
+  return () => unsubscribe();
+}, []);
   return (
     <div className="min-h-screen bg-indigo-50 ">
       <div className="container mx-auto px-4 py-8">
@@ -143,8 +163,8 @@ const Home = () => {
           </div>
         )}
         
-        {activeTab === "create" && (<CreateRoom setActiveTab={setActiveTab}/>)}
-        {activeTab === "join" && <JoinRoom /> }
+        {activeTab === "create" && (<CreateRoom  userDetails={userDetails}/>)}
+        {activeTab === "join" && <JoinRoom  userDetails={userDetails}/> }
       </div>
     </div>
   );

@@ -1,23 +1,74 @@
 import React, { useEffect, useState } from "react";
 import { FiUpload } from "react-icons/fi";
 import { toast } from "sonner";
-
-function CreateRoom({setActiveTab}) {
+import { io } from "socket.io-client";
+import { socket } from "../util/socket";
+import FileTransfer from "./FileTransfer";
+//  const reverseJwk = await window.crypto.subtle.importKey(
+//     "jwk",
+//     jwk,
+//     { name: "RSA-OAEP", hash: "SHA-256" },
+//     true,
+//     ["decrypt"]
+//   );
+//   return reverseJwk;
+function CreateRoom({ userDetails }) {
+  const [receiverInfo, setReceiverInfo] = useState(null);
   const [roomCode, setRoomCode] = useState("");
   const copyRoomCode = () => {
     navigator.clipboard.writeText(roomCode);
-
-    toast.success('Room code copied to clipboard!');
+    toast.success("Room code copied to clipboard!");
   };
   const generateRoomCode = () => {
     const code = Math.floor(100000000 + Math.random() * 900000000).toString();
+    if (roomCode.length > 0) {
+      socket.emit("switch-room", {
+        newRoom: code,
+        oldRoom: roomCode,
+      });
+    } else {
+      socket.emit("switch-room", {
+        newRoom: code,
+        oldRoom: null,
+      });
+    }
     setRoomCode(code);
-    setActiveTab("create");
-    toast.success('Room code generated successfully!');
+    toast.success("Room code generated successfully!");
   };
   useEffect(() => {
+    socket.on("room-switched", (data) => {
+      console.log("Switched to new room", data);
+    });
+    socket.on("init", function (data) {
+      setReceiverInfo(data);
+      socket.emit("Sender-Details", {
+        data: {
+          sender_uid: data.sender_uid,
+          receiver_uid: data.uid,
+          userDetails: userDetails,
+        },
+      });
+      console.log("Receiver ID initialized:", data);
+    });
     generateRoomCode();
+    return () => {
+      socket.off("room-switched");
+      socket.off("init");
+    };
   }, []);
+  {
+    if (receiverInfo)
+      return (
+        <div className="mt-10">
+          <FileTransfer
+            socket={socket}
+            userDetails={userDetails}
+            receiverDetails={receiverInfo}
+          />
+        </div>
+      );
+  }
+
   return (
     <div className="max-w-md mx-auto ">
       <div className="shadow-2xl border-0 bg-white/90 backdrop-blur-sm p-10 rounded-2xl space-y-6">
@@ -25,12 +76,8 @@ function CreateRoom({setActiveTab}) {
           <div className="w-16 h-16 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
             <FiUpload className="h-8 w-8 text-white" />
           </div>
-          <div className="text-2xl font-bold text-gray-800">
-            Room Created!
-          </div>
-          <div>
-            Share this code with others to let them join your room
-          </div>
+          <div className="text-2xl font-bold text-gray-800">Room Created!</div>
+          <div>Share this code with others to let them join your room</div>
         </div>
         <div className="space-y-6">
           <div className="text-center">
@@ -48,7 +95,6 @@ function CreateRoom({setActiveTab}) {
             <button
               onClick={copyRoomCode}
               className="w-full bg-indigo-600 hover:bg-indigo-700 cursor-pointer p-3 font-semi rounded-lg text-white"
-              
             >
               Copy Room Code
             </button>
@@ -57,7 +103,6 @@ function CreateRoom({setActiveTab}) {
               onClick={generateRoomCode}
               variant="outline"
               className="w-full border-[1px] cursor-pointer p-3 font-semibold rounded-lg border-green-500 text-green-600 hover:bg-green-50"
-              
             >
               Generate New Code
             </button>
