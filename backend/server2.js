@@ -22,11 +22,11 @@ const io = require("socket.io")(server, {
 app.use(express.json());
 
 io.on("connection", function (socket) {
-  socket.on("receiver-join", function (data) {
-    socket.join(data.uid);
-    console.log("Receiver joined:", data.uid, " -> sender:", data.sender_uid);
-    socket.in(data.sender_uid).emit("init", data);
-  });
+  // socket.on("receiver-join", function (data) {
+  //   socket.join(data.uid);
+  //   console.log("Receiver joined:", data.uid, " -> sender:", data.sender_uid);
+  //   socket.in(data.sender_uid).emit("init", data);
+  // });
   socket.on("file-meta", function (data) {
     socket.in(data.uid).emit("fs-meta", data.metadata);
   });
@@ -56,14 +56,17 @@ io.on("connection", function (socket) {
     data.data.userDetails.sender_uid = data.data.sender_uid;
     socket
       .to(data.data.receiver_uid)
-      .emit("Sender-Details", data.data.userDetails);
+      .emit("Sender-Details", data.data);
   });
-    socket.on("verifyRoom",function (roomId) {
-      console.log(roomId)
-    const roomExists = io.sockets.adapter.rooms.has(roomId);
-    console.log(roomId)
+    socket.on("verifyRoom", (data) => {
+      // console.log(io.sockets.adapter.rooms)
+    const roomExists = io.sockets.adapter.rooms.has(data.sender_uid);
+
     if(roomExists)
     {
+      socket.join(data.uid);
+      console.log("Receiver joined:", data.uid, " -> sender:", data.sender_uid);
+      socket.in(data.sender_uid).emit("init", data);
       socket.emit("room-exists");
     }
     else{

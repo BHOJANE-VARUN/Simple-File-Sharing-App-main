@@ -233,3 +233,14 @@ Sender                Server                  Receiver
 ---
 
 This flow ensures that both sender and receiver are synchronized for efficient and reliable file transfer using socket.io rooms and events.
+
+
+
+
+
+
+
+// receiver -> private key, public key, symmetic key 
+// sender -> symmetry key,
+// sender -> (public key + symmetry key) == new key
+// recevier -> (private key - new key)

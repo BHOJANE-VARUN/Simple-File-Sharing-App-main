@@ -4,17 +4,22 @@ import { toast } from "sonner";
 import { io } from "socket.io-client";
 import { socket } from "../util/socket";
 import FileTransfer from "./FileTransfer";
-//  const reverseJwk = await window.crypto.subtle.importKey(
-//     "jwk",
-//     jwk,
-//     { name: "RSA-OAEP", hash: "SHA-256" },
-//     true,
-//     ["decrypt"]
-//   );
-//   return reverseJwk;
+const symKeyGenerator = async (setSymKey) => {
+  const key = await window.crypto.subtle.generateKey(
+    {
+      name: "AES-GCM",
+      length: 256,
+    },
+    true,
+    ["encrypt", "decrypt"]
+  );
+  return key;
+};
 function CreateRoom({ userDetails }) {
   const [receiverInfo, setReceiverInfo] = useState(null);
   const [roomCode, setRoomCode] = useState("");
+  const [symKey, setSymKey] = useState(null);
+  // console.log(symKey);
   const copyRoomCode = () => {
     navigator.clipboard.writeText(roomCode);
     toast.success("Room code copied to clipboard!");
@@ -36,26 +41,48 @@ function CreateRoom({ userDetails }) {
     toast.success("Room code generated successfully!");
   };
   useEffect(() => {
-    socket.on("room-switched", (data) => {
-      console.log("Switched to new room", data);
-    });
-    socket.on("init", function (data) {
-      setReceiverInfo(data);
-      socket.emit("Sender-Details", {
-        data: {
-          sender_uid: data.sender_uid,
-          receiver_uid: data.uid,
-          userDetails: userDetails,
-        },
+    symKeyGenerator().then((key) => {
+      setSymKey(key);
+
+      socket.on("init", async (data) => {
+        const publicKey = await crypto.subtle.importKey(
+          "jwk",
+          data.publicKey,
+          { name: "RSA-OAEP", hash: "SHA-256" },
+          true,
+          ["encrypt"]
+        );
+        console.log(publicKey)
+        const rawAesKey = await crypto.subtle.exportKey("raw", key);
+
+        crypto.subtle
+          .encrypt({ name: "RSA-OAEP", hash: "SHA-256" }, publicKey, rawAesKey)
+          .then((encryptedAesKey) => {
+            console.log(encryptedAesKey);
+            socket.emit("Sender-Details", {
+              data: {
+                sender_uid: data.sender_uid,
+                receiver_uid: data.uid,
+                userDetails,
+                encryptedAesKey,
+              },
+            });
+          });
+        // const aesKeyToSend = new Uint8Array(encryptedAesKey);
+        // console.log("Encrypted key snippet:",aesKeyToSend.slice(0, 10));
       });
-      console.log("Receiver ID initialized:", data);
     });
+
     generateRoomCode();
+
     return () => {
-      socket.off("room-switched");
       socket.off("init");
+      socket.off("room-switched");
     };
   }, []);
+  if (!symKey) {
+    return <div>Loading....</div>;
+  }
   {
     if (receiverInfo)
       return (

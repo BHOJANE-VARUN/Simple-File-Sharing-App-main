@@ -2,28 +2,34 @@ import React, { useRef, useState } from "react";
 import { LuUsers } from "react-icons/lu";
 import { toast } from "sonner";
 import { socket } from "../util/socket";
-import { use } from "react";
 import { useEffect } from "react";
 import ReceiverFlow from "./ReceiverFlow";
-async function generateRSAKeyPair() {
+async function generateRSAKeyPair(setKeys, setjwt) {
   const keyPair = await window.crypto.subtle.generateKey(
     {
       name: "RSA-OAEP",
-      modulusLength: 2048, // Strong enough for most use cases
-      publicExponent: new Uint8Array([1, 0, 1]), // 65537
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
       hash: "SHA-256",
     },
     true, // keys can be exported
     ["encrypt", "decrypt"]
   );
-   const jwk = await window.crypto.subtle.exportKey("jwk", keyPair.privateKey);
-  
+  setKeys(keyPair);
+  const jwk = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  setjwt(jwk);
+  return keyPair;
 }
-function JoinRoom({userDetails}) {
+function JoinRoom({ userDetails }) {
+  const [loading, setLoading] = useState(false);
   const [joinCode, setJoinCode] = useState("");
-  const receiverIDRef = useRef(Math.floor(100000000 + Math.random() * 900000000).toString());
+  const receiverIDRef = useRef(
+    Math.floor(100000000 + Math.random() * 900000000).toString()
+  );
   const [senderInfo, setSenderInfo] = useState(null);
-
+  const [keys, setKeys] = useState(null);
+  const [jwt, setjwt] = useState(null);
+  const [symKey, setSymKey] = useState(null);
   const receiverID = receiverIDRef.current;
   const joinRoom = () => {
     if (joinCode.length !== 9 || !/^\d+$/.test(joinCode)) {
@@ -31,35 +37,76 @@ function JoinRoom({userDetails}) {
       return;
     }
     toast.info("trying to connect");
-    socket.emit("verifyRoom",joinCode);
+    // socket.emit("verifyRoom",{
+    //   sender_uid: joinCode,
+    //   uid: receiverID,
+    //   userDetails: userDetails,
+    // });
+    setLoading(true);
+    socket.emit("verifyRoom", {
+      sender_uid: joinCode,
+      uid: receiverID,
+      userDetails: userDetails,
+      publicKey: jwt,
+    });
   };
   useEffect(() => {
-    socket.on("Sender-Details", (data) => {
-      setSenderInfo(data);
-      console.log("Sender details received:", data);
-      toast.success("Joined room successfully!");
+    generateRSAKeyPair(setKeys, setjwt).then((keyPair) => {
+      socket.on("Sender-Details", async (data) => {
+        setSenderInfo(data.userDetails);
+
+        const { encryptedAesKey } = data;
+
+        // const encryptedKeyArray = new Uint8Array(data.encryptedAesKey); // <- this converts the array
+        // const encryptedKeyBuffer = encryptedKeyArray.buffer;
+
+        // console.log("privatek",keyPair.privateKey);
+
+        const decryptedRawKey = await crypto.subtle
+          .decrypt({ name: "RSA-OAEP",hash:"SHA-256" }, keyPair.privateKey, encryptedAesKey)
+          .catch((e) => {
+            console.log(e);
+          });
+
+        // const aesKey = await crypto.subtle.importKey(
+        //   "raw",
+        //   decryptedRawKey,
+        //   { name: "AES-GCM",
+        //     length:256,
+        //    },
+        //   true,
+        //   ["encrypt", "decrypt"]
+        // ).catch((e)=>{
+        //   console.log(e)
+        // })
+
+        // setSymKey(aesKey);
+        setLoading(false);
+        toast.success("Joined room successfully!");
+      });
     });
-    socket.on("room-exists",()=>{
-      
-    })
-    socket.on("room-notexist",()=>{
-        toast.warning("room code is not valid")
-        setJoinCode("");
-    })
+    // socket.on("room-exists", () => {
+    //   // toast.info("exists");
+    // });
+    socket.on("room-notexist", () => {
+      toast.warning("room code is not valid");
+      setJoinCode("");
+      setLoading(false);
+    });
     return () => {
       socket.off("Sender-Details");
       socket.off("room-notexist");
-      socket.off("room-exists");
-    }
+      // socket.off("room-exists");
+    };
   }, []);
   // generateRSAKeyPair().then((result)=>{
   //   console.log(result)
   // })
-  if(senderInfo)
-  {
-    return (
-      <ReceiverFlow senderInfo={senderInfo} />
-    );
+  if (loading) {
+    <div>Loading...</div>;
+  }
+  if (senderInfo) {
+    return <ReceiverFlow senderInfo={senderInfo} />;
   }
   return (
     <div className="max-w-md mx-auto">
