@@ -4,6 +4,39 @@ This document describes the step-by-step flow of how a connection is established
 
 ---
 
+## Installation Steps for Backend
+
+To run the backend server, make sure you have [Node.js](https://nodejs.org/) installed.
+
+1. **Clone the repository:**
+
+    ```sh
+    git clone https://github.com/BHOJANE-VARUN/Simple-File-Sharing-App-main.git
+    cd Simple-File-Sharing-App-main/backend
+    ```
+
+2. **Install dependencies:**
+
+    ```sh
+    npm install
+    ```
+
+3. **Start the backend server:**
+
+    ```sh
+    node server.js
+    ```
+    Or, if using `nodemon` for auto-restart during development:
+    ```sh
+    npx nodemon server.js
+    ```
+
+4. **Access the Application:**
+
+    - By default, the server likely runs on `http://localhost:3001` 
+
+---
+
 ## 1. Sender Creates a Room
 
 - A random 9-digit number is generated as the `joinID`.
@@ -24,6 +57,7 @@ socket.emit("sender-join", {
   - The sender joins that room
 
 ```js
+// In backend (Node.js with socket.io)
 socket.on("sender-join", (data) => {
     socket.join(data.uid);
 });
@@ -54,6 +88,7 @@ socket.emit("receiver-join", {
 - Server notifies the sender with an `init` message containing the receiver's `uid`
 
 ```js
+// In backend
 socket.on("receiver-join", (data) => {
     socket.join(data.uid);
     console.log("Receiver joined:", data.uid, " -> sender:", data.sender_uid);
@@ -115,6 +150,29 @@ document.querySelector("#file-input").addEventListener("change", function(e) {
 - Emits the file metadata to the receiver
 - Sets up the socket to handle file chunk transfers and UI updates
 
+```js
+function shareFile(metadata, buffer, progress_node) {
+    socket.emit("file-meta", {
+        uid: receiverID,
+        metadata: metadata
+    });
+
+    socket.on("fs-share", function() {
+        let chunk = buffer.slice(0, metadata.buffer_size);
+        buffer = buffer.slice(metadata.buffer_size, buffer.length);
+        progress_node.innerText = Math.trunc(((metadata.total_buffer_size - buffer.length) / metadata.total_buffer_size * 100)) + "%";
+        if (chunk.length != 0) {
+            socket.emit("file-raw", {
+                uid: receiverID,
+                buffer: chunk
+            });
+        } else {
+            console.log("Sent file successfully");
+        }
+    });
+}
+```
+
 ---
 
 ## 8. Server Relays File Metadata
@@ -122,6 +180,7 @@ document.querySelector("#file-input").addEventListener("change", function(e) {
 - Upon receiving `file-meta`, server relays it to the receiver as `fs-meta`
 
 ```js
+// In backend
 socket.on("file-meta", (data) => {
     socket.to(data.uid).emit("fs-meta", data.metadata);
 });
@@ -155,6 +214,7 @@ socket.on("fs-meta", function(metadata) {
 - Server receives `fs-start` and relays a `fs-share` message to the sender
 
 ```js
+// In backend
 socket.on("fs-start", function(data) {
     socket.in(data.uid).emit("fs-share", {});
 });
@@ -174,7 +234,7 @@ socket.on("fs-start", function(data) {
 socket.on("fs-share", function() {
     let chunk = buffer.slice(0, metadata.buffer_size);
     buffer = buffer.slice(metadata.buffer_size, buffer.length);
-    progress_node.innerText = Math.trunc(((metadata.total_buffer_size - buffer.length) / metadata.total_buffer_size * 100));
+    progress_node.innerText = Math.trunc(((metadata.total_buffer_size - buffer.length) / metadata.total_buffer_size * 100)) + "%";
     if (chunk.length != 0) {
         socket.emit("file-raw", {
             uid: receiverID,
@@ -193,6 +253,7 @@ socket.on("fs-share", function() {
 - On receiving `file-raw`, server emits `fs-share` to the receiver
 
 ```js
+// In backend
 socket.on("file-raw", function(data) {
     socket.in(data.uid).emit("fs-share", data.buffer);
 });
@@ -206,6 +267,31 @@ socket.on("file-raw", function(data) {
   - Pushes each received chunk into a buffer and updates received file size
   - If the received file size is less than the total, emits `fs-start` again
   - Else, concludes the file transfer
+
+```js
+socket.on("fs-share", function(buffer) {
+    fileShare.buffer.push(buffer);
+    fileShare.transmitted += buffer.byteLength;
+
+    // Update progress bar, etc.
+
+    if (fileShare.transmitted < fileShare.metadata.total_buffer_size) {
+        socket.emit("fs-start", {
+            uid: sender_uid
+        });
+    } else {
+        // File received completely; process the buffer as needed
+        let received = new Uint8Array(fileShare.metadata.total_buffer_size);
+        let offset = 0;
+        fileShare.buffer.forEach(chunk => {
+            received.set(new Uint8Array(chunk), offset);
+            offset += chunk.byteLength;
+        });
+        // Save file, trigger download, etc.
+        console.log("File received successfully");
+    }
+});
+```
 
 ---
 
@@ -234,13 +320,4 @@ Sender                Server                  Receiver
 
 This flow ensures that both sender and receiver are synchronized for efficient and reliable file transfer using socket.io rooms and events.
 
-
-
-
-
-
-
-// receiver -> private key, public key, symmetic key 
-// sender -> symmetry key,
-// sender -> (public key + symmetry key) == new key
-// recevier -> (private key - new key)
+---
