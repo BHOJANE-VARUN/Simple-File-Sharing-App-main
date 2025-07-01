@@ -59,35 +59,36 @@ import JoinRoom from "./JoinRoom";
 import { auth } from "../util/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
+import Logout from "./Logout";
 
 const Home = () => {
   const [activeTab, setActiveTab] = useState("home");
   const [userDetails, setUserDetails] = useState(null);
   const navigate = useNavigate();
-useEffect(() => {
-  const unsubscribe = onAuthStateChanged(auth, (user) => {
-    if (user) {
-      setUserDetails({
-        name: user.displayName || "Anonymous",
-        email: user.email,
-      });
-    }
-    else{
-      navigate("/");
-    }
-  });
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUserDetails({
+          name: user.displayName || "Anonymous",
+          email: user.email,
+        });
+      } else {
+        navigate("/");
+      }
+    });
 
-  return () => unsubscribe();
-}, []);
+    return () => unsubscribe();
+  }, []);
   return (
     <div className="min-h-screen bg-indigo-50 ">
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto">
         <div className="text-center mb-12">
-          <div className="flex items-center justify-center mb-4">
-            <Logo size={"80"} />
-            <h1 className="text-4xl font-bold">
-              {COMPANY_NAME}
-            </h1>
+          <div className="flex justify-between items-center mb-10 p-4">
+            <div className="flex items-center justify-center mb-4">
+              <Logo size={"80"} />
+              <h1 className="text-4xl font-bold">{COMPANY_NAME}</h1>
+            </div>
+            <Logout />
           </div>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Secure file sharing made simple. Create a room or join one to start
@@ -127,7 +128,7 @@ useEffect(() => {
                 </div>
                 <div className="text-center pt-4">
                   <button
-                    onClick={()=> setActiveTab("create")}
+                    onClick={() => setActiveTab("create")}
                     className="w-full bg-green-400 hover:bg-green-600 cursor-pointer  text-white font-semibold py-3 rounded-lg"
                     size="lg"
                   >
@@ -136,7 +137,6 @@ useEffect(() => {
                 </div>
               </div>
 
-            
               <div className=" hover:shadow-2xl border-0 shadow-lg bg-white/80 p-10 rounded-xl">
                 <div className="text-center pb-4">
                   <div className="w-16 h-16 bg-blue-500  rounded-full flex items-center justify-center mx-auto mb-4">
@@ -162,14 +162,13 @@ useEffect(() => {
             </div>
           </div>
         )}
-        
-        {activeTab === "create" && (<CreateRoom  userDetails={userDetails}/>)}
-        {activeTab === "join" && <JoinRoom  userDetails={userDetails}/> }
+
+        {activeTab === "create" && <CreateRoom userDetails={userDetails} />}
+        {activeTab === "join" && <JoinRoom userDetails={userDetails} />}
       </div>
     </div>
   );
-}
-
+};
 
 export default Home;
 

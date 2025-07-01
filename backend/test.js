@@ -43,7 +43,7 @@ const getEncrpytedSymKey = async (jwk) => {
   return encryptedSym;
 };
 
-const getSymKey = async (encrpytedSymKey,keyPair) => {
+const getSymKey = async (encrpytedSymKey, keyPair) => {
   const decryptedRawKey = await crypto.subtle
     .decrypt(
       { name: "RSA-OAEP", hash: "SHA-256" },
@@ -62,21 +62,56 @@ const getSymKey = async (encrpytedSymKey,keyPair) => {
     .catch((e) => {
       console.log(e);
     });
-    return DecryptedSymkey
+  return DecryptedSymkey;
 };
 
-generateRSAKeyPair().then( ({ keyPair, jwk } )=>{
-    getEncrpytedSymKey(jwk).then((encryptedSym)=>{
-        getSymKey(encryptedSym,keyPair).then((DecryptedSymkey)=>{
-            crypto.subtle.exportKey("jwk",DecryptedSymkey).then((key)=>{
-                console.log(key);
-            })
-        })
-    })
+generateRSAKeyPair().then(({ keyPair, jwk }) => {
+  getEncrpytedSymKey(jwk).then((encryptedSym) => {
+    getSymKey(encryptedSym, keyPair).then((DecryptedSymkey) => {
+      // console.log(DecryptedSymkey)
+      crypto.subtle.exportKey("jwk", DecryptedSymkey).then((key) => {
+        console.log(key);
+        crypto.subtle
+          .importKey(
+            "jwk",
+            key,
+            {
+              name: "AES-GCM",
+              length: 256,
+            },
+            true,
+            ["encrypt", "decrypt"]
+          )
+          .then(async (newKey) => {
+            console.log(newKey)
+            // const encoder = new TextEncoder();
+            // const data = encoder.encode("hello world"); // the message to encrypt
+
+            // const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is recommended for AES-GCM
+
+            // const encrypted = await crypto.subtle.encrypt(
+            //   {
+            //     name: "AES-GCM",
+            //     iv: iv,
+            //   },
+            //   newKey, // the CryptoKey you have
+            //   data
+            // );
+
+            // console.log("Encrypted:", new Uint8Array(encrypted)); // this is your ciphertext
+            // const decrypted = await crypto.subtle.decrypt(
+            //   {
+            //     name: "AES-GCM",
+            //     iv: iv, // use the exact same IV you used for encryption
+            //   },
+            //   newKey,
+            //   encrypted
+            // );
+
+            // const decoder = new TextDecoder();
+            // console.log("Decrypted:", decoder.decode(decrypted)); // "hello world"
+          });
+      });
+    });
+  });
 });
-
-
-
-
-
-

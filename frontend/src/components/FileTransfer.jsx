@@ -1,11 +1,10 @@
 import React, { useRef, useState } from "react";
 
-function FileTransfer({ socket, userDetails, receiverDetails }) {
+function FileTransfer({ socket, receiverDetails, symKey }) {
   const [file, setFile] = useState(null);
   const [progress, setProgress] = useState(0);
   const [transferStatus, setTransferStatus] = useState(null);
   const [fileHistory, setFileHistory] = useState([]);
-
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -18,6 +17,7 @@ function FileTransfer({ socket, userDetails, receiverDetails }) {
   const startTransfer = (file) => {
     const reader = new FileReader();
     reader.onload = () => {
+      setTransferStatus(null);
       const buffer = new Uint8Array(reader.result);
 
       // send file metadata
@@ -26,47 +26,60 @@ function FileTransfer({ socket, userDetails, receiverDetails }) {
         metadata: {
           filename: file.name,
           total_buffer_size: buffer.length,
-          buffer_size: 1024,
+          buffer_size: 2048, 
         },
       });
 
       let currentBuffer = buffer;
-      let bufferSize = 1024;
+      let bufferSize = 2048;
 
       socket.off("fs-share");
       socket.on("fs-share", () => {
         const chunk = currentBuffer.slice(0, bufferSize);
         currentBuffer = currentBuffer.slice(bufferSize);
-
-        const progressPercent =
-          100 - (currentBuffer.length / buffer.length) * 100;
-        setProgress(Math.floor(progressPercent));
-        console.log("Sending chunk of size:", chunk.length);
-        if (chunk.length == bufferSize) {
-          socket.emit("file-raw", {
-            uid: receiverDetails.uid,
-            buffer: chunk,
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        crypto.subtle
+          .encrypt({ name: "AES-GCM", iv }, symKey, chunk)
+          .then((result) => {
+            const progressPercent =
+              100 - (currentBuffer.length / buffer.length) * 100;
+            setProgress(Math.floor(progressPercent));
+            console.log("Sending chunk of size:", chunk.length);
+            console.log({
+              buffer:result,
+              iv,
+            })
+            if (chunk.length == bufferSize) {
+              socket.emit("file-raw", {
+                uid: receiverDetails.uid,
+                buffer: result,
+                iv,
+              });
+            } else if (chunk.length >= 0) {
+              if (chunk.length > 0) {
+                socket.emit("file-raw", {
+                  uid: receiverDetails.uid,
+                  buffer: result,
+                  iv,
+                });
+              }
+              console.log("done");
+              const data = {
+                filename: file.name,
+                total_buffer_size: buffer.length,
+              };
+              console.log(data);
+              setFileHistory((prev) => {
+                return [data, ...prev];
+              });
+              setTransferStatus("success");
+              setFile(null);
+              setProgress(0);
+            }
+          })
+          .catch((err) => {
+            console.log(err);
           });
-        } else if( chunk.length >= 0) {
-            if(chunk.length > 0) {
-                   socket.emit("file-raw", {
-            uid: receiverDetails.uid,
-            buffer: chunk,
-          });
-        }
-            console.log("done")
-          const data = {
-            filename: file.name,
-            total_buffer_size: buffer.length,
-          };
-          console.log(data)
-          setFileHistory((prev) => {
-            return [data,...prev];
-          });
-          setTransferStatus("success");
-          setFile(null);
-          setProgress(0);
-        }
       });
     };
     reader.readAsArrayBuffer(file);
@@ -100,7 +113,7 @@ function FileTransfer({ socket, userDetails, receiverDetails }) {
               Click to select a file
             </span>
           </div>
-          <input  type="file" onChange={handleFileChange} className="hidden" />
+          <input type="file" onChange={handleFileChange} className="hidden" />
         </label>
       )}
 

@@ -3,6 +3,7 @@ import { FiUpload } from "react-icons/fi";
 import { toast } from "sonner";
 import { socket } from "../util/socket";
 import FileTransfer from "./FileTransfer";
+import Loading from "./Loading";
 
 const symKeyGenerator = async () => {
   const key = await window.crypto.subtle.generateKey(
@@ -45,6 +46,10 @@ function CreateRoom({ userDetails }) {
       setSymKey(key);
 
       socket.on("init", async (data) => {
+      
+        setReceiverInfo(data);
+      //   console.log(data);
+        
         const publicKey = await crypto.subtle.importKey(
           "jwk",
           data.publicKey,
@@ -53,23 +58,24 @@ function CreateRoom({ userDetails }) {
           ["encrypt"]
         );
 
-        const rawAesKey = await crypto.subtle.exportKey("raw", key);
-        const encryptedAesKey = await crypto.subtle.encrypt(
+        const rawAesKey = await crypto.subtle.exportKey("jwk", key);
+       // console.log(rawAesKey)
+        const kval = new TextEncoder().encode(rawAesKey.k);
+        const encrypted = await crypto.subtle.encrypt(
           { name: "RSA-OAEP", hash: "SHA-256" },
           publicKey,
-          rawAesKey
+          kval
         );
-
-        const encryptedKeyBase64 = arrayBufferToBase64(encryptedAesKey);
 
         socket.emit("Sender-Details", {
           data: {
             sender_uid: data.sender_uid,
             receiver_uid: data.uid,
             userDetails,
-            encryptedAesKey: encryptedKeyBase64,
+            encryptedAesKey: encrypted,
           },
         });
+        
       });
     });
 
@@ -81,9 +87,15 @@ function CreateRoom({ userDetails }) {
     };
   }, []);
 
-  if (!symKey) return <div>Loading...</div>;
+  if (!symKey) return <Loading /> 
   if (receiverInfo)
-    return <FileTransfer socket={socket} userDetails={userDetails} receiverDetails={receiverInfo} />;
+    return (
+      <FileTransfer
+        socket={socket}
+        receiverDetails={receiverInfo}
+        symKey = {symKey}
+      />
+    );
 
   return (
     <div className="max-w-md mx-auto">
@@ -97,9 +109,13 @@ function CreateRoom({ userDetails }) {
         </div>
         <div className="space-y-6">
           <div className="text-center">
-            <label className="text-sm font-medium text-gray-700">Your Room Code</label>
+            <label className="text-sm font-medium text-gray-700">
+              Your Room Code
+            </label>
             <div className="mt-2 p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-              <p className="text-3xl font-mono font-bold text-indigo-600 tracking-wider">{roomCode}</p>
+              <p className="text-3xl font-mono font-bold text-indigo-600 tracking-wider">
+                {roomCode}
+              </p>
             </div>
           </div>
 

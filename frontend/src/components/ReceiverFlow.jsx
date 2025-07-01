@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { socket } from "../util/socket";
 
-function ReceiverFlow({ senderInfo }) {
+function ReceiverFlow({ senderInfo, symKey }) {
   const [fileMeta, setFileMeta] = useState();
   const [progress, setProgress] = useState(0);
   const [transferStatus, setTransferStatus] = useState(null);
@@ -11,7 +11,7 @@ function ReceiverFlow({ senderInfo }) {
     transmitted: 0,
     buffer: [],
   });
-
+  console.log(symKey);
   useEffect(() => {
     socket.on("fs-meta", function (metadata) {
       setProgress(0);
@@ -23,40 +23,55 @@ function ReceiverFlow({ senderInfo }) {
 
       setFileMeta(metadata);
       socket.off("fs-share");
-      socket.on("fs-share", function (buffer) {
-        fileShare.current.buffer.push(buffer);
-        fileShare.current.transmitted += buffer.byteLength;
-        console.log(fileShare.current.transmitted);
+      socket.on("fs-share", function (data) {
+        crypto.subtle
+          .decrypt(
+            {
+              name: "AES-GCM",
+              iv: data.iv, // use the exact same IV you used for encryption
+            },
+            symKey,
+            data.buffer
+          )
+          .then((decrypted) => {
+            fileShare.current.buffer.push(decrypted);
+            fileShare.current.transmitted += decrypted.byteLength;
+            console.log(fileShare.current.transmitted);
 
-        const percent = Math.trunc(
-          (fileShare.current.transmitted /
-            fileShare.current.metadata.total_buffer_size) *
-            100
-        );
-        setProgress(percent);
+            const percent = Math.trunc(
+              (fileShare.current.transmitted /
+                fileShare.current.metadata.total_buffer_size) *
+                100
+            );
+            setProgress(percent);
 
-        if (
-          fileShare.current.transmitted ===
-          fileShare.current.metadata.total_buffer_size
-        ) {
-          setTransferStatus("success");
-          const data = fileShare.current.metadata;
-          setFileHistory((prev) => {
-            return [data, ...prev];
+            if (
+              fileShare.current.transmitted ===
+              fileShare.current.metadata.total_buffer_size
+            ) {
+              setTransferStatus("success");
+              const data = fileShare.current.metadata;
+              setFileHistory((prev) => {
+                return [data, ...prev];
+              });
+              setFileMeta(null);
+              const blob = new Blob(fileShare.current.buffer);
+              const link = document.createElement("a");
+              link.href = URL.createObjectURL(blob);
+              link.download = fileShare.current.metadata.filename;
+              link.click();
+
+              fileShare.current = {
+                metadata: null,
+                transmitted: 0,
+                buffer: [],
+              };
+            } else {
+              socket.emit("fs-start", {
+                uid: senderInfo.sender_uid,
+              });
+            }
           });
-          setFileMeta(null);
-          const blob = new Blob(fileShare.current.buffer);
-          const link = document.createElement("a");
-          link.href = URL.createObjectURL(blob);
-          link.download = fileShare.current.metadata.filename;
-          link.click();
-
-          fileShare.current = { metadata: null, transmitted: 0, buffer: [] };
-        } else {
-          socket.emit("fs-start", {
-            uid: senderInfo.sender_uid,
-          });
-        }
       });
       console.log(senderInfo);
       socket.emit("fs-start", {

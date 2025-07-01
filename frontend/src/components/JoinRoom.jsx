@@ -3,6 +3,7 @@ import { LuUsers } from "react-icons/lu";
 import { toast } from "sonner";
 import { socket } from "../util/socket";
 import ReceiverFlow from "./ReceiverFlow";
+import Loading from "./Loading"
 
 function base64ToArrayBuffer(base64) {
   const binary = atob(base64);
@@ -57,30 +58,58 @@ function JoinRoom({ userDetails }) {
   };
 
   useEffect(() => {
-    generateRSAKeyPair(setKeys, setJwt).then((keyPair) => {
-      socket.on("Sender-Details", async (data) => {
-        setSenderInfo(data.userDetails);
-        const encryptedKeyBuffer = base64ToArrayBuffer(data.encryptedAesKey);
+    generateRSAKeyPair(setKeys, setJwt)
+      .then((keyPair) => {
+        socket.on("Sender-Details", async (data) => {
+          setSenderInfo(data.userDetails);
+          let decrypted;
+          try {
+             decrypted = await crypto.subtle.decrypt(
+            { name: "RSA-OAEP", hash: "SHA-256" },
+            keyPair.privateKey,
+            data.encryptedAesKey
+          );
+          } catch (e) {
+            console.log(e);
+          }
+          
+          const decoded = new TextDecoder().decode(decrypted);
+        //  console.log("Decrypted test message:", decoded);
+          const k = decoded;
+          const KeyObj = {
+            key_ops: ["encrypt", "decrypt"],
+            ext: true,
+            kty: "oct",
+            k,
+            alg: "A256GCM",
+          };
 
-        const decryptedRawKey = await crypto.subtle.decrypt(
-          { name: "RSA-OAEP", hash: "SHA-256" },
-          keyPair.privateKey,
-          encryptedKeyBuffer
-        );
+        //  console.log(KeyObj);
 
-        const aesKey = await crypto.subtle.importKey(
-          "raw",
-          decryptedRawKey,
-          { name: "AES-GCM", length: 256 },
-          true,
-          ["encrypt", "decrypt"]
-        );
-
-        setSymKey(aesKey);
-        setLoading(false);
-        toast.success("Joined room successfully!");
+          crypto.subtle
+            .importKey(
+              "jwk",
+              KeyObj,
+              {
+                name: "AES-GCM",
+                length: 256,
+              },
+              true,
+              ["encrypt", "decrypt"]
+            )
+            .then((key) => {
+              setSymKey(key);
+              setLoading(false);
+              toast.success("Joined room successfully!");
+            })
+            .catch((e) => {
+            //  console.log(e);
+            });
+        })
+      })
+      .catch((e) => {
+      //  console.log(e);
       });
-    });
 
     socket.on("room-notexist", () => {
       toast.warning("Room code is not valid");
@@ -94,9 +123,9 @@ function JoinRoom({ userDetails }) {
     };
   }, []);
 
-  if (loading) return <div>Loading...</div>;
-  if (senderInfo) return <ReceiverFlow senderInfo={senderInfo} />;
-
+  if (loading) return <Loading />
+  if (senderInfo) return <ReceiverFlow senderInfo={senderInfo} symKey={symKey} />;
+  
   return (
     <div className="max-w-md mx-auto">
       <div className="shadow-2xl bg-white/90 p-8 rounded-2xl space-y-6">
@@ -109,7 +138,10 @@ function JoinRoom({ userDetails }) {
         </div>
         <div className="space-y-6">
           <div className="space-y-2">
-            <label htmlFor="roomCode" className="text-sm font-medium text-gray-700">
+            <label
+              htmlFor="roomCode"
+              className="text-sm font-medium text-gray-700"
+            >
               Room Code
             </label>
             <input
@@ -117,11 +149,15 @@ function JoinRoom({ userDetails }) {
               type="text"
               placeholder="Enter 9-digit code"
               value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 9))}
+              onChange={(e) =>
+                setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 9))
+              }
               className="border border-slate-300 w-full text-center text-xl font-mono tracking-wider h-14"
               maxLength={9}
             />
-            <p className="text-xs text-gray-500 text-center">{joinCode.length}/9 digits</p>
+            <p className="text-xs text-gray-500 text-center">
+              {joinCode.length}/9 digits
+            </p>
           </div>
           <button
             onClick={joinRoom}
